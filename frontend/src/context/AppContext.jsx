@@ -9,6 +9,11 @@ const AppContextProvider = (props) => {
   const [loading, setLoading] = useState(true);
   const currencySymbol = '$';
 
+  const getUserId = (userData) => {
+    if (!userData) return '';
+    return userData.id || userData._id || userData?.user?.id || userData?.user?._id || '';
+  };
+
   // Static doctor data
   const staticDoctors = [
     {
@@ -267,9 +272,10 @@ const AppContextProvider = (props) => {
 
   // Function to book an appointment with static doctors
   const bookAppointment = (appointmentData) => {
+    const currentUserId = getUserId(user);
     const newAppointment = {
       id: Date.now().toString(),
-      patientId: user?.id,
+      patientId: currentUserId,
       patientName: user?.name,
       patientEmail: user?.email,
       doctorId: appointmentData.doctorId,
@@ -294,16 +300,47 @@ const AppContextProvider = (props) => {
 
   // Function to get appointments for a specific patient
   const getPatientAppointments = (patientId) => {
-    return appointments.filter(apt => apt.patientId === patientId);
+    const normalizedPatientId = String(patientId || '');
+    return appointments.filter(apt => {
+      const appointmentPatientId = String(apt.patientId || apt.patient || apt.userId || '');
+      return appointmentPatientId === normalizedPatientId;
+    });
   };
 
   // Function to update appointment status
   const updateAppointmentStatus = (appointmentId, newStatus) => {
-    const updatedAppointments = appointments.map(apt => 
-      apt.id === appointmentId ? { ...apt, status: newStatus } : apt
-    );
-    setAppointments(updatedAppointments);
-    localStorage.setItem('appointments', JSON.stringify(updatedAppointments));
+    setAppointments(prevAppointments => {
+      const updatedAppointments = prevAppointments.map(apt => 
+        (apt._id || apt.id) === appointmentId ? { ...apt, status: newStatus } : apt
+      );
+      localStorage.setItem('appointments', JSON.stringify(updatedAppointments));
+      return updatedAppointments;
+    });
+  };
+
+  // Function to cancel an appointment locally or via backend
+  const cancelAppointment = async (appointment) => {
+    const appointmentId = appointment?._id || appointment?.id;
+
+    if (appointmentId && localStorage.getItem('token')) {
+      try {
+        await fetch(`${import.meta.env.VITE_API_URL}/api/appointments/${appointmentId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      } catch (error) {
+        console.error('Backend cancellation failed, removing locally instead:', error);
+      }
+    }
+
+    setAppointments(prevAppointments => {
+      const updatedAppointments = prevAppointments.filter(apt => (apt._id || apt.id) !== appointmentId);
+      localStorage.setItem('appointments', JSON.stringify(updatedAppointments));
+      return updatedAppointments;
+    });
   };
 
   // Patient login function
@@ -423,10 +460,12 @@ const AppContextProvider = (props) => {
     loading,
     doctors,
     appointments,
+    setAppointments,
     bookAppointment,
     getDoctorAppointments,
     getPatientAppointments,
     updateAppointmentStatus,
+    cancelAppointment,
     loginPatient,
     currencySymbol
   };

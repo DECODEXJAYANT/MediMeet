@@ -50,4 +50,4 @@ const uploadMiddleware = (req, res, next) => {
   });
 };
 
-module.exports = upload;
+module.exports = uploadMiddleware;

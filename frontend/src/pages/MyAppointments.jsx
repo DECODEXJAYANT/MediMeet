@@ -3,29 +3,32 @@ import { AppContext } from '../context/AppContext';
 import { assets } from "../assets/assets";
 
 const MyAppointments = () => {
-  const { user, getPatientAppointments, updateAppointmentStatus, doctors } = useContext(AppContext);
+  const { user, getPatientAppointments, doctors, cancelAppointment } = useContext(AppContext);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const currentUserId = user?.id || user?._id || '';
+
   // Get appointments for current user
-  const userAppointments = getPatientAppointments(user?.id || '');
-  
-  // Map appointments with doctor information
+  const userAppointments = getPatientAppointments(currentUserId);
+
   const appointmentsWithDoctors = userAppointments.map(appointment => {
-    const doctor = doctors.find(doc => doc._id === appointment.doctorId);
+    const appointmentDoctor = appointment.doctor || null;
+    const doctor = doctors.find(doc => doc._id === appointment.doctorId || doc._id === appointmentDoctor?._id);
+
     return {
       ...appointment,
       doctor: doctor ? {
         _id: doctor._id,
-        name: doctor.name,
-        speciality: doctor.speciality,
-        image: doctor.image,
-        address: doctor.address
+        name: doctor.name || appointmentDoctor?.user?.name || appointment.doctorName,
+        speciality: doctor.speciality || appointmentDoctor?.speciality || 'Unknown',
+        image: doctor.image || appointmentDoctor?.user?.photo || assets.profile_pic,
+        address: doctor.address || { line1: 'Address not available', line2: '' }
       } : {
-        _id: appointment.doctorId,
-        name: appointment.doctorName,
-        speciality: 'Unknown',
-        image: assets.profile_pic,
+        _id: appointment.doctorId || appointmentDoctor?._id,
+        name: appointmentDoctor?.user?.name || appointment.doctorName || 'Doctor',
+        speciality: appointmentDoctor?.speciality || 'Unknown',
+        image: appointmentDoctor?.user?.photo || assets.profile_pic,
         address: { line1: 'Address not available', line2: '' }
       }
     };
@@ -84,11 +87,11 @@ const MyAppointments = () => {
               <p className="text-xs">{appointment.doctor.address?.line1}</p>
               <p className="text-xs mt-1">
                 <span className="text-sm text-neutral-700 font-medium">Date & Time: </span>
-                {new Date(appointment.appointmentDate).toLocaleDateString('en-US', { 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })} | {appointment.timeSlot}
+                {new Date(appointment.appointmentDate || appointment.date).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })} | {appointment.timeSlot || appointment.time}
               </p>
             </div>
             <div></div>
@@ -102,28 +105,11 @@ const MyAppointments = () => {
                 onClick={async () => {
                   if (window.confirm('Are you sure you want to cancel this appointment?')) {
                     try {
-                      const response = await fetch(
-                        `${import.meta.env.VITE_API_URL}/api/appointments/${appointment._id}`,
-                        {
-                          method: 'DELETE',
-                          headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                            'Content-Type': 'application/json'
-                          }
-                        }
-                      );
-
-                      if (response.ok) {
-                        // Remove the appointment from the list
-                        setAppointments(prevAppointments => 
-                          prevAppointments.filter(apt => apt._id !== appointment._id)
-                        );
-                      } else {
-                        alert('Failed to cancel appointment');
-                      }
+                      await cancelAppointment(appointment);
+                      alert('Appointment cancelled successfully');
                     } catch (error) {
                       console.error('Error canceling appointment:', error);
-                      alert('Error canceling appointment');
+                      alert('Error cancelling appointment');
                     }
                   }
                 }}
